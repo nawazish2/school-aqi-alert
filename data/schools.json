@@ -1,0 +1,7 @@
+[
+  {"school_id": "dtu", "name": "Delhi Technological University", "lat": 28.7501, "lon": 77.1177, "phone": ""},
+  {"school_id": "dps-rkp", "name": "DPS R.K. Puram", "lat": 28.5672, "lon": 77.1773, "phone": ""},
+  {"school_id": "modern", "name": "Modern School Barakhamba", "lat": 28.6290, "lon": 77.2260, "phone": ""},
+  {"school_id": "springdales", "name": "Springdales Pusa Road", "lat": 28.6410, "lon": 77.1700, "phone": ""},
+  {"school_id": "sanskriti", "name": "Sanskriti School", "lat": 28.5985, "lon": 77.1825, "phone": ""}
+]

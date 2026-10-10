@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>School AQI Alert</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --card:#1b2029; --text:#e8ebf2; --muted:#9aa3b5; --line:#2a3140; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:20px; margin:0; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:0 16px 16px; }
+  @media (max-width:800px) { main { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  #map { height:340px; border-radius:8px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border:0; }
+  .badge { color:#fff; border-radius:999px; padding:2px 10px; font-weight:600; min-width:48px; text-align:center; }
+  .muted { color:var(--muted); font-size:13px; }
+  button, select, input { font:inherit; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); }
+  button { cursor:pointer; background:#2563eb; color:#fff; border:0; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .msg { font-size:13px; margin-top:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>School AQI Alert</h1>
+  <button id="refresh">Check now</button>
+</header>
+<main>
+  <section class="card"><div id="map"></div></section>
+  <section class="card">
+    <strong>Schools</strong>
+    <div id="schools"></div>
+    <div class="controls">
+      <select id="simSchool"></select>
+      <input id="simAqi" type="number" min="0" max="500" value="320" style="width:90px">
+      <button id="simulate">Simulate bad AQI</button>
+    </div>
+    <div class="muted" id="simResult"></div>
+  </section>
+  <section class="card" style="grid-column:1/-1">
+    <strong>Recent alerts</strong>
+    <div id="alerts"></div>
+  </section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const COLORS = [[50,"#2e9e4f"],[100,"#c9a400"],[150,"#e67e22"],[200,"#d63a3a"],[300,"#8e44ad"],[1e6,"#7b1e3a"]];
+const color = a => (COLORS.find(([m]) => a <= m) || COLORS.at(-1))[1];
+const map = L.map("map").setView([28.64, 77.18], 10);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {attribution:"&copy; OpenStreetMap"}).addTo(map);
+let markers = [];
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function load() {
+  const [schools, alerts] = await Promise.all([
+    fetch("api/schools").then(r => r.json()),
+    fetch("api/alerts").then(r => r.json()),
+  ]);
+  schools.sort((a, b) => (b.last_aqi ?? -1) - (a.last_aqi ?? -1));
+  document.getElementById("schools").innerHTML = schools.map(s => `
+    <div class="row">
+      <div><div>${esc(s.name)}</div>
+      <div class="muted">${esc(s.last_category || "not checked yet")}</div></div>
+      <span class="badge" style="background:${s.last_aqi == null ? "#98a2b3" : color(s.last_aqi)}">${s.last_aqi ?? "–"}</span>
+    </div>`).join("");
+  const sel = document.getElementById("simSchool");
+  if (!sel.options.length) sel.innerHTML = schools.map(s => `<option value="${esc(s.school_id)}">${esc(s.name)}</option>`).join("");
+  markers.forEach(m => m.remove());
+  markers = schools.map(s => L.circleMarker([s.lat, s.lon], {
+    radius: 12, color: "#fff", weight: 2, fillOpacity: .9,
+    fillColor: s.last_aqi == null ? "#98a2b3" : color(s.last_aqi),
+  }).addTo(map).bindPopup(`<b>${esc(s.name)}</b><br>AQI ${s.last_aqi ?? "n/a"}`));
+  document.getElementById("alerts").innerHTML = alerts.length ? alerts.map(a => `
+    <div class="row"><div>
+      <div><b>${esc(a.school)}</b> · AQI ${a.aqi}${a.simulated ? " (simulated)" : ""}</div>
+      <div class="msg">${esc(a.message)}</div>
+      <div class="muted">${new Date(a.ts).toLocaleString()} · SMS ${esc(a.sms)}</div>
+    </div></div>`).join("") : '<div class="muted">No alerts yet.</div>';
+}
+
+document.getElementById("refresh").onclick = async e => {
+  e.target.disabled = true; e.target.textContent = "Checking…";
+  await fetch("api/refresh", {method:"POST"}); await load();
+  e.target.disabled = false; e.target.textContent = "Check now";
+};
+document.getElementById("simulate").onclick = async () => {
+  const body = JSON.stringify({school_id: simSchool.value, aqi: Number(simAqi.value)});
+  const r = await fetch("api/simulate", {method:"POST", body});
+  const j = await r.json();
+  simResult.textContent = r.ok ? `SMS ${j.sms}: ${j.message}` : j.error;
+  await load();
+};
+load();
+</script>
+</body>
+</html>
