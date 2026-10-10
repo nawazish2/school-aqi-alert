@@ -5,6 +5,7 @@ Texts a school principal at 6:30 AM when the air is bad, with a clear action ("C
 **Flow:** EventBridge -> Lambda (Open-Meteo AQI) -> advice (rules, optional Strands agent on Bedrock) -> SNS SMS -> DynamoDB -> dashboard served by an API Lambda.
 
 ## Run without AWS
+    python scripts/local_server.py    # dashboard at http://localhost:8000 (SMS printed in terminal)
     pip install pytest boto3
     python -m pytest tests
     python scripts/local_demo.py      # live AQI + alert text for each school
