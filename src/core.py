@@ -5,8 +5,8 @@ from decimal import Decimal
 
 import boto3
 
-import advice
 import aqi as aqi_mod
+import logic
 
 _ddb = None
 _sns = None
@@ -47,21 +47,24 @@ def process_school(school: dict, forced_aqi: int | None = None) -> dict:
     today = now.date().isoformat()
 
     if forced_aqi is not None:
-        reading = {"aqi": int(forced_aqi), "pm25": None}
+        reading = logic.forced_reading(int(forced_aqi))
     else:
         reading = aqi_mod.fetch_aqi(float(school["lat"]), float(school["lon"]))
 
-    value = reading["aqi"]
-    cat = aqi_mod.category(value)
-    message = advice.build_message(school["name"], value, cat)
-
-    should_alert = value >= threshold and (
-        forced_aqi is not None or school.get("last_alert_date") != today
+    decision = logic.evaluate(school, reading, threshold, today, forced=forced_aqi is not None)
+    value, cat, message = decision["aqi"], decision["category"], decision["message"]
+    sms_status = (
+        _send_sms(school.get("phone", ""), message) if decision["should_alert"] else "not_needed"
     )
-    sms_status = _send_sms(school.get("phone", ""), message) if should_alert else "not_needed"
 
-    update = "SET last_aqi=:a, last_category=:c, last_checked=:t, last_message=:m"
-    values = {":a": value, ":c": cat, ":t": now.isoformat(), ":m": message}
+    update = (
+        "SET last_aqi=:a, last_category=:c, last_checked=:t, last_message=:m, "
+        "last_current=:cu, last_peak=:pk, last_hourly=:h"
+    )
+    values = {
+        ":a": value, ":c": cat, ":t": now.isoformat(), ":m": message,
+        ":cu": reading["current"], ":pk": reading["peak"], ":h": reading["hourly"],
+    }
     if sms_status == "sent":
         update += ", last_alert_date=:d"
         values[":d"] = today
@@ -71,7 +74,7 @@ def process_school(school: dict, forced_aqi: int | None = None) -> dict:
         ExpressionAttributeValues=values,
     )
 
-    if should_alert:
+    if decision["should_alert"]:
         alerts.put_item(
             Item={
                 "pk": "ALERT",

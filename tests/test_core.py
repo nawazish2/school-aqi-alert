@@ -14,7 +14,7 @@ SCHOOL = {"school_id": "x", "name": "Test School", "lat": 1, "lon": 2, "phone": 
 def run(school, forced=None, aqi_value=200):
     schools, alerts = mock.Mock(), mock.Mock()
     with mock.patch.object(core, "_tables", return_value=(schools, alerts)), mock.patch.object(
-        core.aqi_mod, "fetch_aqi", return_value={"aqi": aqi_value, "pm25": 1}
+        core.aqi_mod, "fetch_aqi", return_value={"aqi": aqi_value, "current": aqi_value, "peak": aqi_value, "hourly": [aqi_value]}
     ), mock.patch.object(core, "_send_sms", return_value="sent") as sms:
         out = core.process_school(school, forced_aqi=forced)
     return out, sms, alerts

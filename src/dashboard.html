@@ -6,100 +6,223 @@
 <title>School AQI Alert</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec; }
+  :root { --bg:#f4f6fa; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec; --accent:#2563eb; --danger:#d63a3a; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#12151c; --card:#1b2029; --text:#e8ebf2; --muted:#9aa3b5; --line:#2a3140; }
+    :root { --bg:#12151c; --card:#1b2029; --text:#e8ebf2; --muted:#9aa3b5; --line:#2a3140; --accent:#4f86f7; }
   }
-  * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--text); }
-  header { padding:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-  h1 { font-size:20px; margin:0; }
-  main { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:0 16px 16px; }
-  @media (max-width:800px) { main { grid-template-columns:1fr; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:1200px; margin:0 auto; padding:0 16px 32px; }
+  header { padding:20px 0 12px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:22px; margin:0; } .sub { color:var(--muted); font-size:13px; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+  @media (max-width:700px) { .stats { grid-template-columns:repeat(2,1fr); } }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .tile b { display:block; font-size:26px; line-height:1.1; } .tile span { color:var(--muted); font-size:12px; }
+  .grid { display:grid; grid-template-columns:1.1fr 1fr; gap:16px; }
+  @media (max-width:860px) { .grid { grid-template-columns:1fr; } }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
-  #map { height:340px; border-radius:8px; }
-  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); }
-  .row:last-child { border:0; }
-  .badge { color:#fff; border-radius:999px; padding:2px 10px; font-weight:600; min-width:48px; text-align:center; }
-  .muted { color:var(--muted); font-size:13px; }
-  button, select, input { font:inherit; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); }
-  button { cursor:pointer; background:#2563eb; color:#fff; border:0; }
-  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
-  .msg { font-size:13px; margin-top:4px; }
+  h2 { font-size:15px; margin:0 0 10px; }
+  #map { height:320px; border-radius:8px; }
+  .school { padding:12px 0; border-bottom:1px solid var(--line); }
+  .school:last-child { border:0; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .name { font-weight:600; } .muted { color:var(--muted); font-size:13px; }
+  .badge { color:#fff; border-radius:999px; padding:2px 12px; font-weight:700; min-width:52px; text-align:center; }
+  .spark { width:100%; height:36px; margin-top:6px; }
+  .preview { font-size:13px; margin-top:6px; padding:8px 10px; border-radius:8px; background:var(--bg); white-space:pre-line; }
+  .x { background:none; border:0; color:var(--muted); cursor:pointer; padding:0 4px; font-size:16px; }
+  button, select, input { font:inherit; padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); }
+  button.primary { cursor:pointer; background:var(--accent); color:#fff; border:0; font-weight:600; }
+  button:disabled { opacity:.6; cursor:wait; }
+  .form { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .form .full { grid-column:1/-1; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; }
+  .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#1c2230; color:#fff; padding:10px 16px; border-radius:10px; max-width:90vw; display:none; z-index:9999; }
+  .alert { padding:10px 0; border-bottom:1px solid var(--line); } .alert:last-child { border:0; }
+  .sim { background:#fff3cd; color:#7a5b00; border-radius:6px; padding:0 6px; font-size:11px; margin-left:6px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>School AQI Alert</h1>
-  <button id="refresh">Check now</button>
-</header>
-<main>
-  <section class="card"><div id="map"></div></section>
-  <section class="card">
-    <strong>Schools</strong>
-    <div id="schools"></div>
-    <div class="controls">
-      <select id="simSchool"></select>
-      <input id="simAqi" type="number" min="0" max="500" value="320" style="width:90px">
-      <button id="simulate">Simulate bad AQI</button>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>School AQI Alert</h1>
+      <div class="sub">Warns principals before school starts, in English and Hindi, based on the school-hours forecast.</div>
     </div>
-    <div class="muted" id="simResult"></div>
-  </section>
-  <section class="card" style="grid-column:1/-1">
-    <strong>Recent alerts</strong>
+    <div class="controls">
+      <input id="adminKey" type="password" placeholder="Admin key (if set)" style="width:150px">
+      <button id="refresh" class="primary">Check now</button>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="tile"><b id="sMonitored">–</b><span>Schools monitored</span></div>
+    <div class="tile"><b id="sRisk" style="color:var(--danger)">–</b><span>Need an alert today</span></div>
+    <div class="tile"><b id="sWorst">–</b><span>Worst school-hours AQI</span></div>
+    <div class="tile"><b id="sAlerts">–</b><span>Alerts sent</span></div>
+  </div>
+
+  <div class="grid">
+    <div style="display:grid; gap:16px; align-content:start">
+      <section class="card">
+        <h2>Map <span class="muted">(click to set a new school's location)</span></h2>
+        <div id="map"></div>
+      </section>
+      <section class="card">
+        <h2>Add a school</h2>
+        <div class="form">
+          <input id="fName" class="full" placeholder="School name">
+          <input id="fLat" placeholder="Latitude (click map)" inputmode="decimal">
+          <input id="fLon" placeholder="Longitude (click map)" inputmode="decimal">
+          <input id="fPhone" placeholder="Principal phone +91…">
+          <select id="fLang">
+            <option value="en">SMS in English</option>
+            <option value="hi">SMS in Hindi</option>
+            <option value="both">English + Hindi</option>
+          </select>
+          <button id="add" class="primary full">Add school</button>
+        </div>
+      </section>
+    </div>
+
+    <div style="display:grid; gap:16px; align-content:start">
+      <section class="card">
+        <h2>Schools <span class="muted">(AQI = worse of now and today's 7am–4pm peak)</span></h2>
+        <div id="schools"></div>
+      </section>
+      <section class="card">
+        <h2>Try a bad air day</h2>
+        <div class="controls">
+          <select id="simSchool"></select>
+          <input id="simAqi" type="number" min="0" max="500" value="320" style="width:90px">
+          <button id="simulate" class="primary">Simulate</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Recent alerts</h2>
     <div id="alerts"></div>
   </section>
-</main>
+</div>
+<div class="toast" id="toast"></div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const COLORS = [[50,"#2e9e4f"],[100,"#c9a400"],[150,"#e67e22"],[200,"#d63a3a"],[300,"#8e44ad"],[1e6,"#7b1e3a"]];
 const color = a => (COLORS.find(([m]) => a <= m) || COLORS.at(-1))[1];
-const map = L.map("map").setView([28.64, 77.18], 10);
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {attribution:"&copy; OpenStreetMap"}).addTo(map);
-let markers = [];
-
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $ = id => document.getElementById(id);
+const THRESHOLD = 151;
 
-async function load() {
-  const [schools, alerts] = await Promise.all([
-    fetch("api/schools").then(r => r.json()),
-    fetch("api/alerts").then(r => r.json()),
-  ]);
-  schools.sort((a, b) => (b.last_aqi ?? -1) - (a.last_aqi ?? -1));
-  document.getElementById("schools").innerHTML = schools.map(s => `
-    <div class="row">
-      <div><div>${esc(s.name)}</div>
-      <div class="muted">${esc(s.last_category || "not checked yet")}</div></div>
-      <span class="badge" style="background:${s.last_aqi == null ? "#98a2b3" : color(s.last_aqi)}">${s.last_aqi ?? "–"}</span>
-    </div>`).join("");
-  const sel = document.getElementById("simSchool");
-  if (!sel.options.length) sel.innerHTML = schools.map(s => `<option value="${esc(s.school_id)}">${esc(s.name)}</option>`).join("");
-  markers.forEach(m => m.remove());
-  markers = schools.map(s => L.circleMarker([s.lat, s.lon], {
-    radius: 12, color: "#fff", weight: 2, fillOpacity: .9,
-    fillColor: s.last_aqi == null ? "#98a2b3" : color(s.last_aqi),
-  }).addTo(map).bindPopup(`<b>${esc(s.name)}</b><br>AQI ${s.last_aqi ?? "n/a"}`));
-  document.getElementById("alerts").innerHTML = alerts.length ? alerts.map(a => `
-    <div class="row"><div>
-      <div><b>${esc(a.school)}</b> · AQI ${a.aqi}${a.simulated ? " (simulated)" : ""}</div>
-      <div class="msg">${esc(a.message)}</div>
-      <div class="muted">${new Date(a.ts).toLocaleString()} · SMS ${esc(a.sms)}</div>
-    </div></div>`).join("") : '<div class="muted">No alerts yet.</div>';
+let map = null, layer = null, picker = null;
+try {
+  map = L.map("map").setView([28.64, 77.18], 10);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {attribution:"&copy; OpenStreetMap"}).addTo(map);
+  layer = L.layerGroup().addTo(map);
+  map.on("click", e => {
+    $("fLat").value = e.latlng.lat.toFixed(5); $("fLon").value = e.latlng.lng.toFixed(5);
+    if (picker) picker.remove();
+    picker = L.marker(e.latlng).addTo(map);
+  });
+} catch (e) { $("map").textContent = "Map unavailable (offline?)"; }
+
+try { $("adminKey").value = sessionStorage.getItem("adminKey") || ""; } catch (e) {}
+const headers = () => {
+  const k = $("adminKey").value.trim();
+  try { sessionStorage.setItem("adminKey", k); } catch (e) {}
+  return k ? {"x-admin-key": k} : {};
+};
+let toastTimer;
+const toast = msg => { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = "none", 4500); };
+async function call(path, method = "GET", body) {
+  const r = await fetch(path, {method, headers: {...headers(), ...(body ? {"content-type":"application/json"} : {})}, body: body && JSON.stringify(body)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+  return j;
 }
 
-document.getElementById("refresh").onclick = async e => {
-  e.target.disabled = true; e.target.textContent = "Checking…";
-  await fetch("api/refresh", {method:"POST"}); await load();
-  e.target.disabled = false; e.target.textContent = "Check now";
-};
-document.getElementById("simulate").onclick = async () => {
-  const body = JSON.stringify({school_id: simSchool.value, aqi: Number(simAqi.value)});
-  const r = await fetch("api/simulate", {method:"POST", body});
-  const j = await r.json();
-  simResult.textContent = r.ok ? `SMS ${j.sms}: ${j.message}` : j.error;
-  await load();
-};
-load();
+function spark(values, peak) {
+  if (!values || values.length < 2) return "";
+  const w = 240, h = 36, max = Math.max(...values, 50), step = w / (values.length - 1);
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 3 - (v / max) * (h - 6)).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Next 24 hours AQI forecast">
+    <polyline points="${pts}" fill="none" stroke="${color(Math.max(...values))}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+async function load() {
+  let schools, alerts;
+  try { [schools, alerts] = await Promise.all([call("api/schools"), call("api/alerts")]); }
+  catch (e) { toast(e.message); return; }
+  schools.sort((a, b) => (b.last_aqi ?? -1) - (a.last_aqi ?? -1));
+
+  const checked = schools.filter(s => s.last_aqi != null);
+  $("sMonitored").textContent = schools.length;
+  $("sRisk").textContent = checked.filter(s => s.last_aqi >= THRESHOLD).length;
+  $("sWorst").textContent = checked.length ? Math.max(...checked.map(s => s.last_aqi)) : "–";
+  $("sAlerts").textContent = alerts.length;
+
+  $("schools").innerHTML = schools.length ? schools.map(s => `
+    <div class="school">
+      <div class="top">
+        <div><div class="name">${esc(s.name)}</div>
+          <div class="muted">${esc(s.last_category || "Not checked yet")}${s.last_current != null ? ` · now ${s.last_current}, peak ${s.last_peak}` : ""}</div></div>
+        <div><span class="badge" style="background:${s.last_aqi == null ? "#98a2b3" : color(s.last_aqi)}">${s.last_aqi ?? "–"}</span>
+          <button class="x" title="Remove" data-del="${esc(s.school_id)}">✕</button></div>
+      </div>
+      ${spark(s.last_hourly)}
+      ${s.last_message ? `<div class="preview">${esc(s.last_message)}</div>` : ""}
+    </div>`).join("") : '<div class="muted">No schools yet. Add one.</div>';
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    if (!confirm("Remove this school?")) return;
+    try { await call(`api/schools/${encodeURIComponent(b.dataset.del)}`, "DELETE"); await load(); } catch (e) { toast(e.message); }
+  });
+
+  const sel = $("simSchool"), cur = sel.value;
+  sel.innerHTML = schools.map(s => `<option value="${esc(s.school_id)}">${esc(s.name)}</option>`).join("");
+  if (cur) sel.value = cur;
+
+  if (layer) {
+    layer.clearLayers();
+    schools.forEach(s => L.circleMarker([s.lat, s.lon], {
+      radius: 12, color: "#fff", weight: 2, fillOpacity: .92,
+      fillColor: s.last_aqi == null ? "#98a2b3" : color(s.last_aqi),
+    }).addTo(layer).bindPopup(`<b>${esc(s.name)}</b><br>AQI ${s.last_aqi ?? "n/a"}`));
+  }
+
+  $("alerts").innerHTML = alerts.length ? alerts.map(a => `
+    <div class="alert">
+      <div><b>${esc(a.school)}</b> · AQI ${a.aqi}${a.simulated ? '<span class="sim">simulated</span>' : ""}</div>
+      <div class="preview">${esc(a.message)}</div>
+      <div class="muted">${new Date(a.ts).toLocaleString()} · SMS ${esc(a.sms)}</div>
+    </div>`).join("") : '<div class="muted">No alerts yet.</div>';
+}
+
+function busy(btn, label, fn) {
+  return async () => {
+    const old = btn.textContent; btn.disabled = true; btn.textContent = label;
+    try { await fn(); } catch (e) { toast(e.message); }
+    btn.disabled = false; btn.textContent = old;
+  };
+}
+$("refresh").onclick = busy($("refresh"), "Checking…", async () => { await call("api/refresh", "POST"); await load(); toast("Checked all schools"); });
+$("simulate").onclick = busy($("simulate"), "Sending…", async () => {
+  const j = await call("api/simulate", "POST", {school_id: $("simSchool").value, aqi: Number($("simAqi").value)});
+  toast(`SMS ${j.sms}: ${j.message}`); await load();
+});
+$("add").onclick = busy($("add"), "Adding…", async () => {
+  await call("api/schools", "POST", {name: $("fName").value, lat: $("fLat").value, lon: $("fLon").value, phone: $("fPhone").value, lang: $("fLang").value});
+  ["fName","fLat","fLon","fPhone"].forEach(id => $(id).value = "");
+  if (picker) { picker.remove(); picker = null; }
+  await load(); toast("School added");
+});
+// First visit: schools have never been checked, so run one check automatically.
+load().then(async () => {
+  const rows = await call("api/schools").catch(() => []);
+  if (rows.some(r => r.last_aqi == null)) { try { await call("api/refresh", "POST"); await load(); } catch (e) {} }
+});
 </script>
 </body>
 </html>

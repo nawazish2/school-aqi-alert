@@ -7,6 +7,11 @@ Parameters:
     Type: Number
     Default: 151
     Description: US AQI at or above which an SMS is sent
+  AdminKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: If set, adding/removing schools, refresh and simulate need this key (x-admin-key header)
   AdviceModelId:
     Type: String
     Default: ""
@@ -24,6 +29,7 @@ Globals:
         ALERTS_TABLE: !Ref AlertsTable
         ALERT_THRESHOLD: !Ref AlertThreshold
         ADVICE_MODEL_ID: !Ref AdviceModelId
+        ADMIN_KEY: !Ref AdminKey
 
 Resources:
   SchoolsTable:
@@ -76,6 +82,8 @@ Resources:
       Events:
         Dashboard: { Type: HttpApi, Properties: { Path: /, Method: GET } }
         Schools: { Type: HttpApi, Properties: { Path: /api/schools, Method: GET } }
+        AddSchool: { Type: HttpApi, Properties: { Path: /api/schools, Method: POST } }
+        DeleteSchool: { Type: HttpApi, Properties: { Path: /api/schools/{school_id}, Method: DELETE } }
         Alerts: { Type: HttpApi, Properties: { Path: /api/alerts, Method: GET } }
         Refresh: { Type: HttpApi, Properties: { Path: /api/refresh, Method: POST } }
         Simulate: { Type: HttpApi, Properties: { Path: /api/simulate, Method: POST } }

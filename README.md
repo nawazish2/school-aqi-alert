@@ -12,8 +12,14 @@ Texts a school principal at 6:30 AM when the air is bad, with a clear action ("C
 
 ## Deploy
     sam build && sam deploy --guided
-    python scripts/seed.py <SchoolsTableName> +91XXXXXXXXXX   # your verified phone
+    python3 scripts/seed.py <SchoolsTableName> +91XXXXXXXXXX   # your verified phone (or add schools from the dashboard)
 Open the `DashboardUrl` output. Use "Simulate bad AQI" for the demo.
+
+## Features
+- Alerts use the **school-hours forecast** (worse of now and today's 7am-4pm peak), so principals are warned about the day ahead.
+- SMS in **English, Hindi or both** per school.
+- Dashboard: stats, 24h forecast sparkline per school, add schools by clicking the map, alert history.
+- Optional `AdminKey` deploy parameter protects add/remove/refresh/simulate (`--parameter-overrides AdminKey=secret`).
 
 ## Notes
 - SMS: new accounts are in the SNS SMS sandbox, so verify your phone number in SNS first. India also needs sender registration for production.
