@@ -68,5 +68,6 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("Dashboard: http://localhost:8000")
-    HTTPServer(("127.0.0.1", 8000), H).serve_forever()
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    print(f"Dashboard: http://127.0.0.1:{port}  (Ctrl+C to stop)")
+    HTTPServer(("0.0.0.0", port), H).serve_forever()
