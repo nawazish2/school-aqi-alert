@@ -3,137 +3,223 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>School AQI Alert</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-  :root { --bg:#f4f6fa; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec; --accent:#2563eb; --danger:#d63a3a; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#12151c; --card:#1b2029; --text:#e8ebf2; --muted:#9aa3b5; --line:#2a3140; --accent:#4f86f7; }
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(oklch(97.5% 0.006 250), oklch(18% 0.015 255));
+    --surface: light-dark(oklch(100% 0 0), oklch(23% 0.018 255));
+    --surface-2: light-dark(oklch(96% 0.008 250), oklch(27% 0.02 255));
+    --text: light-dark(oklch(24% 0.02 260), oklch(95% 0.008 250));
+    --muted: light-dark(oklch(52% 0.02 258), oklch(72% 0.02 255));
+    --line: light-dark(oklch(91% 0.01 255), oklch(33% 0.02 255));
+    --accent: light-dark(oklch(52% 0.2 262), oklch(72% 0.15 258));
+    --on-accent: light-dark(#fff, oklch(20% 0.03 260));
+    --good: oklch(62% 0.17 150);  --moderate: oklch(76% 0.16 95);
+    --usg: oklch(70% 0.17 55);    --unhealthy: light-dark(oklch(58% 0.21 27), oklch(66% 0.2 27));
+    --very: light-dark(oklch(48% 0.19 315), oklch(68% 0.18 315));
+    --hazard: light-dark(oklch(36% 0.14 15), oklch(64% 0.19 12));
+    --aqi: var(--good);
+    --radius: 16px;
+    --shadow: 0 1px 2px light-dark(rgb(16 24 40 / .05), rgb(0 0 0 / .3)), 0 8px 24px -12px light-dark(rgb(16 24 40 / .12), rgb(0 0 0 / .5));
+    accent-color: var(--accent);
+    scrollbar-color: light-dark(#c4cad4, #4a5163) transparent;
+    scrollbar-width: thin;
   }
-  * { box-sizing:border-box; }
-  body { margin:0; font:15px/1.45 system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); }
-  .wrap { max-width:1200px; margin:0 auto; padding:0 16px 32px; }
-  header { padding:20px 0 12px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-  h1 { font-size:22px; margin:0; } .sub { color:var(--muted); font-size:13px; }
-  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
-  @media (max-width:700px) { .stats { grid-template-columns:repeat(2,1fr); } }
-  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
-  .tile b { display:block; font-size:26px; line-height:1.1; } .tile span { color:var(--muted); font-size:12px; }
-  .grid { display:grid; grid-template-columns:1.1fr 1fr; gap:16px; }
-  @media (max-width:860px) { .grid { grid-template-columns:1fr; } }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
-  h2 { font-size:15px; margin:0 0 10px; }
-  #map { height:320px; border-radius:8px; }
-  .school { padding:12px 0; border-bottom:1px solid var(--line); }
-  .school:last-child { border:0; }
-  .top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-  .name { font-weight:600; } .muted { color:var(--muted); font-size:13px; }
-  .badge { color:#fff; border-radius:999px; padding:2px 12px; font-weight:700; min-width:52px; text-align:center; }
-  .spark { width:100%; height:36px; margin-top:6px; }
-  .preview { font-size:13px; margin-top:6px; padding:8px 10px; border-radius:8px; background:var(--bg); white-space:pre-line; }
-  .x { background:none; border:0; color:var(--muted); cursor:pointer; padding:0 4px; font-size:16px; }
-  button, select, input { font:inherit; padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); }
-  button.primary { cursor:pointer; background:var(--accent); color:#fff; border:0; font-weight:600; }
-  button:disabled { opacity:.6; cursor:wait; }
-  .form { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
-  .form .full { grid-column:1/-1; }
-  .controls { display:flex; gap:8px; flex-wrap:wrap; }
-  .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#1c2230; color:#fff; padding:10px 16px; border-radius:10px; max-width:90vw; display:none; z-index:9999; }
-  .alert { padding:10px 0; border-bottom:1px solid var(--line); } .alert:last-child { border:0; }
-  .chip { display:inline-block; border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; margin-left:6px; }
-  .chip.acted { background:#d9f2e0; color:#1d6b35; } .chip.pending { background:#fff0c2; color:#7a5b00; }
-  .chip.escalated { background:#fbd9d9; color:#9b1c1c; } .chip.clear { background:var(--bg); color:var(--muted); }
-  .preview a { color:var(--accent); word-break:break-all; }
-  .acct { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; text-align:center; }
-  .acct div { border-radius:10px; padding:8px; } .acct b { display:block; font-size:22px; }
-  .sim { background:#fff3cd; color:#7a5b00; border-radius:6px; padding:0 6px; font-size:11px; margin-left:6px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 20px 48px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  /* hero tinted by the worst air in the city */
+  .hero { background: linear-gradient(160deg, color-mix(in oklch, var(--aqi) 30%, var(--bg)) 0%, var(--bg) 78%); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  .hero .wrap { padding-top: 28px; padding-bottom: 28px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: end; }
+  @media (max-width: 860px) { .hero .wrap { grid-template-columns: 1fr; } }
+  .eyebrow { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--aqi); box-shadow: 0 0 0 4px color-mix(in oklch, var(--aqi) 25%, transparent); }
+  h1 { font-size: clamp(28px, 4.6vw, 44px); line-height: 1.08; letter-spacing: -.02em; margin: 10px 0 10px; text-wrap: balance; }
+  .lede { color: var(--muted); max-width: 52ch; margin: 0 0 18px; text-wrap: pretty; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .big { background: color-mix(in oklch, var(--surface) 80%, transparent); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
+  .big .num { font-size: 64px; line-height: 1; font-weight: 750; letter-spacing: -.03em; color: var(--aqi); }
+  .big .cat { font-weight: 650; margin-top: 4px; } .big .where { color: var(--muted); font-size: 13px; }
+
+  button, select, input { font: inherit; color: inherit; }
+  .btn { appearance: none; border: 1px solid var(--line); background: var(--surface); padding: 9px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; transition: transform .12s, box-shadow .12s, background .12s; }
+  .btn:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  .btn:disabled { opacity: .6; cursor: progress; transform: none; }
+  .field { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; width: 100%; min-width: 0; }
+  .field::placeholder { color: var(--muted); }
+
+  .layout { display: grid; grid-template-columns: minmax(300px, 4fr) 7fr; gap: 20px; align-items: start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+  .stack { display: grid; gap: 20px; }
+  .side { position: sticky; top: 16px; }
+  @media (max-width: 960px) { .side { position: static; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+  h2 { font-size: 15px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.005em; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+
+  /* the accountability flow */
+  .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+  @media (max-width: 520px) { .flow { grid-template-columns: repeat(2, 1fr); } }
+  .step { background: var(--surface-2); border-radius: 12px; padding: 12px; position: relative; }
+  .step b { display: block; font-size: 28px; line-height: 1.1; letter-spacing: -.02em; }
+  .step span { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .step.acted b { color: var(--good); } .step.pending b { color: oklch(62% 0.15 75); } .step.escalated b { color: var(--unhealthy); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+  .school { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); display: grid; gap: 10px; border-top: 4px solid var(--c, var(--line)); }
+  .school header { display: flex; gap: 12px; align-items: center; }
+  .school h3 { margin: 0; font-size: 15px; line-height: 1.25; text-wrap: balance; }
+  .ring { flex: none; width: 64px; height: 64px; position: relative; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 17px; letter-spacing: -.02em; }
+  .meta { color: var(--muted); font-size: 12.5px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 650; }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .chip.acted { background: oklch(94% 0.06 150 / .9); color: oklch(40% 0.12 150); }
+  .chip.pending { background: oklch(94% 0.08 90 / .9); color: oklch(45% 0.1 75); }
+  .chip.escalated { background: oklch(93% 0.05 25 / .9); color: oklch(45% 0.17 27); }
+  .chip.clear { background: var(--surface-2); color: var(--muted); }
+  @media (prefers-color-scheme: dark) {
+    .chip.acted { background: oklch(32% 0.07 150); color: oklch(85% 0.14 150); }
+    .chip.pending { background: oklch(34% 0.07 85); color: oklch(88% 0.12 90); }
+    .chip.escalated { background: oklch(32% 0.09 25); color: oklch(85% 0.12 25); }
+  }
+  .spark { width: 100%; height: 44px; display: block; }
+  details { font-size: 13px; } summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  .msg { margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; white-space: pre-line; overflow-wrap: anywhere; }
+  .msg a { color: var(--accent); font-weight: 600; }
+  .del { margin-left: auto; align-self: start; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+  .del:hover { color: var(--unhealthy); background: var(--surface-2); }
+
+  #map { height: 300px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; display: grid; place-items: center; color: var(--muted); }
+  @media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9); } }
+  .form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .full { grid-column: 1 / -1; }
+
+  .sim { display: grid; gap: 10px; }
+  .sim .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type=range] { flex: 1; min-width: 140px; }
+  .readout { font-weight: 750; font-size: 22px; min-width: 56px; text-align: right; }
+
+  .feed { display: grid; gap: 0; }
+  .event { display: grid; grid-template-columns: 14px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .event:last-child { border: 0; }
+  .event i { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: var(--c); }
+  .tag { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 7px; background: var(--surface-2); color: var(--muted); margin-left: 6px; }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; translate: -50% 0; background: light-dark(oklch(24% 0.02 260), oklch(95% 0.008 250)); color: light-dark(#fff, oklch(22% 0.02 260)); padding: 12px 18px; border-radius: 12px; max-width: min(92vw, 560px); box-shadow: 0 12px 32px -8px rgb(0 0 0 / .4); opacity: 0; pointer-events: none; transition: opacity .2s, translate .2s; z-index: 9999; white-space: pre-line; }
+  .toast.show { opacity: 1; translate: -50% -4px; }
+  .empty { color: var(--muted); text-align: center; padding: 28px 8px; }
+  .skeleton { height: 150px; border-radius: var(--radius); background: linear-gradient(90deg, var(--surface-2), var(--surface), var(--surface-2)); background-size: 200% 100%; animation: sh 1.2s infinite linear; }
+  @keyframes sh { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
+<section class="hero">
+  <div class="wrap">
     <div>
-      <h1>School AQI Alert</h1>
-      <div class="sub">Warns principals before school starts, in English and Hindi, based on the school-hours forecast.</div>
+      <span class="eyebrow"><i class="dot"></i> School AQI Alert</span>
+      <h1>Cancel the outdoor drill <em style="font-style:normal;color:var(--aqi)">before</em> the children are on the field.</h1>
+      <p class="lede">Reads the school-day air forecast, texts the principal in English or Hindi, tracks who acted, and escalates to the district officer if nobody does.</p>
+      <div class="actions">
+        <button id="refresh" class="btn primary">Check air now</button>
+        <input id="adminKey" class="field" type="password" placeholder="Admin key (if set)" style="width:160px" aria-label="Admin key">
+      </div>
     </div>
-    <div class="controls">
-      <input id="adminKey" type="password" placeholder="Admin key (if set)" style="width:150px">
-      <button id="refresh" class="primary">Check now</button>
+    <div class="big" aria-live="polite">
+      <div class="meta">Worst school-hours air today</div>
+      <div class="num" id="heroNum">–</div>
+      <div class="cat" id="heroCat">Waiting for first check</div>
+      <div class="where" id="heroWhere"></div>
     </div>
-  </header>
-
-  <div class="stats">
-    <div class="tile"><b id="sMonitored">–</b><span>Schools monitored</span></div>
-    <div class="tile"><b id="sRisk" style="color:var(--danger)">–</b><span>Need an alert today</span></div>
-    <div class="tile"><b id="sWorst">–</b><span>Worst school-hours AQI</span></div>
-    <div class="tile"><b id="sAlerts">–</b><span>Alerts sent</span></div>
   </div>
+</section>
 
-  <div class="grid">
-    <div style="display:grid; gap:16px; align-content:start">
+<main class="wrap">
+  <div class="layout">
+    <aside class="stack side">
       <section class="card">
-        <h2>Map <span class="muted">(click to set a new school's location)</span></h2>
-        <div id="map"></div>
+        <h2>Map</h2>
+        <p class="hint">Click anywhere to set the location of a new school.</p>
+        <div id="map" role="img" aria-label="Map of monitored schools"></div>
       </section>
       <section class="card">
         <h2>Add a school</h2>
         <div class="form">
-          <input id="fName" class="full" placeholder="School name">
-          <input id="fLat" placeholder="Latitude (click map)" inputmode="decimal">
-          <input id="fLon" placeholder="Longitude (click map)" inputmode="decimal">
-          <input id="fPhone" placeholder="Principal phone +91…">
-          <input id="fContacts" placeholder="Extra contacts (comma separated)">
-          <select id="fLang" class="full">
-            <option value="en">SMS in English</option>
-            <option value="hi">SMS in Hindi</option>
-            <option value="both">English + Hindi</option>
+          <input id="fName" class="field full" placeholder="School name" aria-label="School name">
+          <input id="fLat" class="field" placeholder="Latitude" inputmode="decimal" aria-label="Latitude">
+          <input id="fLon" class="field" placeholder="Longitude" inputmode="decimal" aria-label="Longitude">
+          <input id="fPhone" class="field" placeholder="Principal +91…" inputmode="tel" aria-label="Principal phone">
+          <input id="fContacts" class="field" placeholder="Extra contacts" aria-label="Extra contacts, comma separated">
+          <select id="fLang" class="field full" aria-label="SMS language">
+            <option value="en">SMS in English</option><option value="hi">SMS in Hindi</option><option value="both">English + Hindi</option>
           </select>
-          <button id="add" class="primary full">Add school</button>
+          <button id="add" class="btn primary full">Add school</button>
         </div>
       </section>
-    </div>
+    </aside>
 
-    <div style="display:grid; gap:16px; align-content:start">
+    <div class="stack">
       <section class="card">
-        <h2>Today's accountability <span class="muted">(alert → confirm → escalate)</span></h2>
-        <div class="acct">
-          <div class="chip acted" style="margin:0"><b id="aActed">0</b>Acted</div>
-          <div class="chip pending" style="margin:0"><b id="aPending">0</b>Awaiting</div>
-          <div class="chip escalated" style="margin:0"><b id="aEsc">0</b>Escalated</div>
+        <h2>Today's accountability</h2>
+        <p class="hint">Alert → principal confirms → anyone who doesn't is reported to the district officer at 7:30 AM.</p>
+        <div class="flow">
+          <div class="step"><b id="fMonitored">0</b><span>Schools</span></div>
+          <div class="step acted"><b id="aActed">0</b><span>Acted</span></div>
+          <div class="step pending"><b id="aPending">0</b><span>Awaiting</span></div>
+          <div class="step escalated"><b id="aEsc">0</b><span>Escalated</span></div>
         </div>
-        <div class="muted" style="margin-bottom:8px">Each alert has a confirm link. At 7:30 AM schools that have not confirmed are reported to the district officer.</div>
-        <button id="escalate" class="primary">Run 7:30 escalation now</button>
+        <button id="escalate" class="btn">Run the 7:30 escalation now</button>
       </section>
-      <section class="card">
-        <h2>Schools <span class="muted">(AQI = worse of now and today's 7am–4pm peak)</span></h2>
-        <div id="schools"></div>
+
+      <section>
+        <div class="grid" id="schools"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
       </section>
-      <section class="card">
-        <h2>Try a bad air day</h2>
-        <div class="controls">
-          <select id="simSchool"></select>
-          <input id="simAqi" type="number" min="0" max="500" value="320" style="width:90px">
-          <button id="simulate" class="primary">Simulate</button>
+
+      <section class="card sim">
+        <div><h2>Try a bad air day</h2><p class="hint" style="margin:0">Pick a school and force a reading to see the whole alert flow.</p></div>
+        <select id="simSchool" class="field" aria-label="School to simulate"></select>
+        <div class="row">
+          <input id="simAqi" type="range" min="50" max="500" step="10" value="320" aria-label="Simulated AQI">
+          <span class="readout" id="simOut">320</span>
+          <button id="simulate" class="btn primary">Send alert</button>
         </div>
+        <div class="row">
+          <button class="btn" data-preset="120">Sensitive 120</button>
+          <button class="btn" data-preset="220">Unhealthy 220</button>
+          <button class="btn" data-preset="350">Hazardous 350</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Activity</h2>
+        <div class="feed" id="alerts"></div>
       </section>
     </div>
   </div>
-
-  <section class="card" style="margin-top:16px">
-    <h2>Recent alerts</h2>
-    <div id="alerts"></div>
-  </section>
-</div>
-<div class="toast" id="toast"></div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-const COLORS = [[50,"#2e9e4f"],[100,"#c9a400"],[150,"#e67e22"],[200,"#d63a3a"],[300,"#8e44ad"],[1e6,"#7b1e3a"]];
-const color = a => (COLORS.find(([m]) => a <= m) || COLORS.at(-1))[1];
+const BANDS = [[50,"--good"],[100,"--moderate"],[150,"--usg"],[200,"--unhealthy"],[300,"--very"],[1e6,"--hazard"]];
+const bandVar = a => (BANDS.find(([m]) => a <= m) || BANDS.at(-1))[1];
+const cvar = a => `var(${bandVar(a)})`;
+const raw = a => getComputedStyle(document.documentElement).getPropertyValue(bandVar(a)).trim();
+const CATS = [[50,"Good"],[100,"Moderate"],[150,"Unhealthy for sensitive groups"],[200,"Unhealthy"],[300,"Very unhealthy"],[1e6,"Hazardous"]];
+const catOf = a => (CATS.find(([m]) => a <= m) || CATS.at(-1))[1];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const linkify = t => esc(t).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">confirm link</a>');
+const linkify = t => esc(t).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">Confirm link</a>');
 const $ = id => document.getElementById(id);
-const THRESHOLD = 151;
+const LABELS = {acted:"Acted", pending:"Awaiting confirmation", escalated:"Escalated"};
+const chip = st => LABELS[st] ? `<span class="chip ${st}">${LABELS[st]}</span>` : '<span class="chip clear">No alert</span>';
 
 let map = null, layer = null, picker = null;
 try {
@@ -145,7 +231,7 @@ try {
     if (picker) picker.remove();
     picker = L.marker(e.latlng).addTo(map);
   });
-} catch (e) { $("map").textContent = "Map unavailable (offline?)"; }
+} catch (e) { $("map").textContent = "Map unavailable offline"; }
 
 try { $("adminKey").value = sessionStorage.getItem("adminKey") || ""; } catch (e) {}
 const headers = () => {
@@ -154,7 +240,7 @@ const headers = () => {
   return k ? {"x-admin-key": k} : {};
 };
 let toastTimer;
-const toast = msg => { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = "none", 4500); };
+const toast = msg => { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 5000); };
 async function call(path, method = "GET", body) {
   const r = await fetch(path, {method, headers: {...headers(), ...(body ? {"content-type":"application/json"} : {})}, body: body && JSON.stringify(body)});
   const j = await r.json().catch(() => ({}));
@@ -162,15 +248,33 @@ async function call(path, method = "GET", body) {
   return j;
 }
 
-const LABELS = {acted:"Acted", pending:"Awaiting confirmation", escalated:"Escalated"};
-const chip = st => LABELS[st] ? `<span class="chip ${st}">${LABELS[st]}</span>` : "";
+function ring(aqi) {
+  const R = 26, C = 2 * Math.PI * R, p = aqi == null ? 0 : Math.min(aqi, 500) / 500;
+  return `<div class="ring"><svg viewBox="0 0 64 64" aria-hidden="true">
+    <circle cx="32" cy="32" r="${R}" fill="none" stroke="var(--surface-2)" stroke-width="7"/>
+    <circle cx="32" cy="32" r="${R}" fill="none" stroke="${aqi == null ? "var(--line)" : cvar(aqi)}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(C * p).toFixed(1)} ${C.toFixed(1)}"/></svg>
+    <b>${aqi ?? "–"}</b></div>`;
+}
 
-function spark(values, peak) {
-  if (!values || values.length < 2) return "";
-  const w = 240, h = 36, max = Math.max(...values, 50), step = w / (values.length - 1);
-  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 3 - (v / max) * (h - 6)).toFixed(1)}`).join(" ");
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Next 24 hours AQI forecast">
-    <polyline points="${pts}" fill="none" stroke="${color(Math.max(...values))}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+let gid = 0;
+function spark(values) {
+  if (!values || values.length < 2) return '<div class="meta">No forecast yet</div>';
+  const w = 240, h = 44, max = Math.max(...values, 50), step = w / (values.length - 1), id = `g${gid++}`;
+  const pts = values.map((v, i) => [i * step, h - 4 - (v / max) * (h - 8)]);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const c = cvar(Math.max(...values));
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Next 24 hours air quality forecast">
+    <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${line} L${w},${h} L0,${h} Z" fill="url(#${id})"/>
+    <path d="${line}" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+}
+
+function renderHero(schools) {
+  const worst = schools.filter(s => s.last_aqi != null).sort((a, b) => b.last_aqi - a.last_aqi)[0];
+  document.documentElement.style.setProperty("--aqi", worst ? cvar(worst.last_aqi) : "var(--good)");
+  $("heroNum").textContent = worst ? worst.last_aqi : "–";
+  $("heroCat").textContent = worst ? catOf(worst.last_aqi) : "Waiting for first check";
+  $("heroWhere").textContent = worst ? worst.name : "";
 }
 
 async function load() {
@@ -178,26 +282,23 @@ async function load() {
   try { [schools, alerts] = await Promise.all([call("api/schools"), call("api/alerts")]); }
   catch (e) { toast(e.message); return; }
   schools.sort((a, b) => (b.last_aqi ?? -1) - (a.last_aqi ?? -1));
+  renderHero(schools);
 
-  const checked = schools.filter(s => s.last_aqi != null);
-  $("sMonitored").textContent = schools.length;
   const count = st => schools.filter(s => s.status === st).length;
-  $("sRisk").textContent = checked.filter(s => s.last_aqi >= THRESHOLD).length;
+  $("fMonitored").textContent = schools.length;
   $("aActed").textContent = count("acted"); $("aPending").textContent = count("pending"); $("aEsc").textContent = count("escalated");
-  $("sWorst").textContent = checked.length ? Math.max(...checked.map(s => s.last_aqi)) : "–";
-  $("sAlerts").textContent = alerts.length;
 
   $("schools").innerHTML = schools.length ? schools.map(s => `
-    <div class="school">
-      <div class="top">
-        <div><div class="name">${esc(s.name)}${chip(s.status)}</div>
-          <div class="muted">${esc(s.last_category || "Not checked yet")}${s.last_current != null ? ` · now ${s.last_current}, peak ${s.last_peak}` : ""}</div></div>
-        <div><span class="badge" style="background:${s.last_aqi == null ? "#98a2b3" : color(s.last_aqi)}">${s.last_aqi ?? "–"}</span>
-          <button class="x" title="Remove" data-del="${esc(s.school_id)}">✕</button></div>
-      </div>
+    <article class="school" style="--c:${s.last_aqi == null ? "var(--line)" : cvar(s.last_aqi)}">
+      <header>
+        ${ring(s.last_aqi)}
+        <div><h3>${esc(s.name)}</h3><div class="meta">${esc(s.last_category || "Not checked yet")}</div></div>
+        <button class="del" title="Remove school" aria-label="Remove ${esc(s.name)}" data-del="${esc(s.school_id)}">×</button>
+      </header>
+      <div>${chip(s.status)} ${s.last_current != null ? `<span class="meta">Now ${s.last_current} · school-hours peak ${s.last_peak}</span>` : ""}</div>
       ${spark(s.last_hourly)}
-      ${s.last_message ? `<div class="preview">${linkify(s.last_message)}</div>` : ""}
-    </div>`).join("") : '<div class="muted">No schools yet. Add one.</div>';
+      ${s.last_message ? `<details><summary>SMS sent to principal</summary><div class="msg">${linkify(s.last_message)}</div></details>` : ""}
+    </article>`).join("") : '<div class="card empty">No schools yet. Add one on the left.</div>';
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
     if (!confirm("Remove this school?")) return;
     try { await call(`api/schools/${encodeURIComponent(b.dataset.del)}`, "DELETE"); await load(); } catch (e) { toast(e.message); }
@@ -209,18 +310,24 @@ async function load() {
 
   if (layer) {
     layer.clearLayers();
-    schools.forEach(s => L.circleMarker([s.lat, s.lon], {
-      radius: 12, color: "#fff", weight: 2, fillOpacity: .92,
-      fillColor: s.last_aqi == null ? "#98a2b3" : color(s.last_aqi),
-    }).addTo(layer).bindPopup(`<b>${esc(s.name)}</b><br>AQI ${s.last_aqi ?? "n/a"}`));
+    const pts = schools.map(s => {
+      const col = s.last_aqi == null ? "#98a2b3" : raw(s.last_aqi);
+      L.circleMarker([s.lat, s.lon], {radius: 13, color: "#fff", weight: 2.5, fillOpacity: .95, fillColor: col})
+        .addTo(layer).bindPopup(`<b>${esc(s.name)}</b><br>AQI ${s.last_aqi ?? "n/a"}`);
+      return [s.lat, s.lon];
+    });
+    if (pts.length && !load.fitted) { map.fitBounds(pts, {padding: [30, 30], maxZoom: 12}); load.fitted = true; }
   }
 
   $("alerts").innerHTML = alerts.length ? alerts.map(a => `
-    <div class="alert">
-      <div><b>${esc(a.school)}</b> · AQI ${a.aqi}${a.simulated ? '<span class="sim">simulated</span>' : ""}</div>
-      <div class="preview">${linkify(a.message)}</div>
-      <div class="muted">${new Date(a.ts).toLocaleString()} · SMS ${esc(a.sms)}</div>
-    </div>`).join("") : '<div class="muted">No alerts yet.</div>';
+    <div class="event" style="--c:${a.category === "Escalation" ? "var(--unhealthy)" : cvar(a.aqi)}">
+      <i></i>
+      <div>
+        <div><b>${esc(a.school)}</b>${a.category === "Escalation" ? '<span class="tag">Escalation</span>' : ` · AQI ${a.aqi}`}${a.simulated ? '<span class="tag">Simulated</span>' : ""}</div>
+        <div class="msg" style="margin-top:6px">${linkify(a.message)}</div>
+        <div class="meta" style="margin-top:4px">${new Date(a.ts).toLocaleString()} · SMS ${esc(a.sms)}</div>
+      </div>
+    </div>`).join("") : '<div class="empty">No alerts yet. Try a bad air day.</div>';
 }
 
 function busy(btn, label, fn) {
@@ -230,7 +337,7 @@ function busy(btn, label, fn) {
     btn.disabled = false; btn.textContent = old;
   };
 }
-$("refresh").onclick = busy($("refresh"), "Checking…", async () => { await call("api/refresh", "POST"); await load(); toast("Checked all schools"); });
+$("refresh").onclick = busy($("refresh"), "Checking…", async () => { await call("api/refresh", "POST"); await load(); toast("Checked every school"); });
 $("escalate").onclick = busy($("escalate"), "Escalating…", async () => {
   const j = await call("api/escalate", "POST");
   toast(j.escalated ? `Escalated ${j.escalated} school(s) to the district officer` : "Nothing to escalate: every alert is confirmed");
@@ -238,14 +345,19 @@ $("escalate").onclick = busy($("escalate"), "Escalating…", async () => {
 });
 $("simulate").onclick = busy($("simulate"), "Sending…", async () => {
   const j = await call("api/simulate", "POST", {school_id: $("simSchool").value, aqi: Number($("simAqi").value)});
-  toast(`SMS ${j.sms}: ${j.message}`); await load();
+  toast(`SMS ${j.sms}\n${j.message}`); await load();
 });
+const syncSim = () => { $("simOut").textContent = $("simAqi").value; $("simOut").style.color = cvar(Number($("simAqi").value)); };
+$("simAqi").oninput = syncSim;
+document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => { $("simAqi").value = b.dataset.preset; syncSim(); });
+syncSim();
 $("add").onclick = busy($("add"), "Adding…", async () => {
   await call("api/schools", "POST", {name: $("fName").value, lat: $("fLat").value, lon: $("fLon").value, phone: $("fPhone").value, contacts: $("fContacts").value, lang: $("fLang").value});
   ["fName","fLat","fLon","fPhone","fContacts"].forEach(id => $(id).value = "");
   if (picker) { picker.remove(); picker = null; }
-  await load(); toast("School added");
+  await load(); toast("School added and checked");
 });
+
 // First visit: schools have never been checked, so run one check automatically.
 load().then(async () => {
   const rows = await call("api/schools").catch(() => []);
