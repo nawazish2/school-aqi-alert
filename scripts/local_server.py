@@ -14,6 +14,8 @@ import aqi  # noqa: E402
 import logic  # noqa: E402
 
 THRESHOLD = 151
+PORT = 8000
+TODAY = lambda: datetime.now(timezone.utc).date().isoformat()  # noqa: E731
 SCHOOLS = {s["school_id"]: s for s in json.loads((root / "data" / "schools.json").read_text())}
 ALERTS = []
 
@@ -33,9 +35,14 @@ def check(school, forced=None):
     )
     sms = "not_needed"
     if d["should_alert"]:
+        token = logic.new_token(school["school_id"])
+        d["message"] = logic.with_confirm_link(d["message"], f"http://127.0.0.1:{PORT}", token)
+        school["last_message"] = d["message"]
         print("SMS ->", d["message"])
         sms = "printed"
-        school["last_alert_date"] = now.date().isoformat()
+        school.update(last_alert_date=now.date().isoformat(), alert_token=token)
+        school.pop("ack_date", None)
+        school.pop("escalated_date", None)
         ALERTS.insert(0, {"school_id": school["school_id"], "school": school["name"], "aqi": d["aqi"],
                           "category": d["category"], "message": d["message"], "ts": now.isoformat(),
                           "sms": sms, "simulated": forced is not None})
@@ -55,7 +62,15 @@ class H(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             self._send((root / "src" / "dashboard.html").read_text(encoding="utf-8"), "text/html; charset=utf-8")
         elif self.path == "/api/schools":
-            self._send(list(SCHOOLS.values()))
+            self._send([{**s, "status": logic.status(s, TODAY())} for s in SCHOOLS.values()])
+        elif self.path.startswith("/c/"):
+            token = self.path[3:]
+            school = SCHOOLS.get(logic.school_id_from_token(token))
+            if school and school.get("alert_token") == token:
+                school["ack_date"] = TODAY()
+                self._send(f"<meta charset=utf-8><h2 style='font-family:system-ui;text-align:center;margin-top:20vh'>✅ Thank you. {school['name']} has confirmed action.</h2>", "text/html; charset=utf-8")
+            else:
+                self._send("<h2>Link not valid</h2>", "text/html; charset=utf-8", 404)
         elif self.path == "/api/alerts":
             self._send(ALERTS[:20])
         else:
@@ -71,6 +86,16 @@ class H(BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers.get("content-length") or 0)) or b"{}"
         if self.path == "/api/refresh":
             self._send([check(s) for s in list(SCHOOLS.values())])
+        elif self.path == "/api/escalate":
+            pending = logic.pending_schools(list(SCHOOLS.values()), TODAY())
+            for p in pending:
+                p["escalated_date"] = TODAY()
+            if pending:
+                msg = logic.escalation_message(pending)
+                print("SMS to officer ->", msg)
+                ALERTS.insert(0, {"school_id": "*", "school": "District officer", "aqi": 0, "category": "Escalation",
+                                  "message": msg, "ts": datetime.now(timezone.utc).isoformat(), "sms": "printed", "simulated": False})
+            self._send({"escalated": len(pending), "schools": [p["name"] for p in pending]})
         elif self.path == "/api/simulate":
             req = json.loads(body)
             school = SCHOOLS.get(req.get("school_id"))
@@ -91,5 +116,6 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    PORT = port
     print(f"Dashboard: http://127.0.0.1:{port}  (Ctrl+C to stop)")
     HTTPServer(("0.0.0.0", port), H).serve_forever()

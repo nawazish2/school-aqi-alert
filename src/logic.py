@@ -1,5 +1,6 @@
 """Pure decision + validation logic (no AWS), shared by Lambda and the local server."""
 import re
+import secrets
 import unicodedata
 
 import advice
@@ -39,6 +40,12 @@ def validate_school(body: dict) -> dict:
     phone = str(body.get("phone", "")).strip().replace(" ", "")
     if phone and not PHONE_RE.match(phone):
         raise ValueError("phone must look like +919876543210")
+    raw = body.get("contacts") or []
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    contacts = [str(c).strip().replace(" ", "") for c in raw if str(c).strip()]
+    if len(contacts) > 5 or any(not PHONE_RE.match(c) for c in contacts):
+        raise ValueError("contacts must be up to 5 phone numbers like +919876543210")
     lang = body.get("lang", "en")
     if lang not in advice.LANGS:
         raise ValueError("lang must be en, hi or both")
@@ -48,5 +55,51 @@ def validate_school(body: dict) -> dict:
         "lat": round(lat, 5),
         "lon": round(lon, 5),
         "phone": phone,
+        "contacts": contacts,
         "lang": lang,
     }
+
+
+# ---- accountability loop: alert -> confirm link -> escalate -------------------
+
+def new_token(school_id: str) -> str:
+    return f"{school_id}.{secrets.token_urlsafe(8)}"
+
+
+def school_id_from_token(token: str) -> str:
+    return token.rsplit(".", 1)[0] if "." in token else ""
+
+
+def with_confirm_link(message: str, base_url: str, token: str) -> str:
+    if not base_url:
+        return message
+    return f"{message}\nConfirm action taken: {base_url.rstrip('/')}/c/{token}"
+
+
+def status(school: dict, today: str) -> str:
+    """acted | escalated | pending | clear | unchecked, for the given day."""
+    if school.get("last_alert_date") == today and school.get("alert_token"):
+        if school.get("ack_date") == today:
+            return "acted"
+        if school.get("escalated_date") == today:
+            return "escalated"
+        return "pending"
+    return "unchecked" if school.get("last_aqi") is None else "clear"
+
+
+def pending_schools(schools: list, today: str) -> list:
+    return [s for s in schools if status(s, today) == "pending"]
+
+
+def escalation_message(schools: list) -> str:
+    names = ", ".join(s["name"] for s in schools[:8])
+    more = f" (+{len(schools) - 8} more)" if len(schools) > 8 else ""
+    return (
+        f"ESCALATION: {len(schools)} school(s) have not confirmed action on today's "
+        f"AQI alert: {names}{more}."
+    )
+
+
+def recipients(school: dict) -> list:
+    phones = [school.get("phone", "")] + list(school.get("contacts") or [])
+    return [p for p in phones if p]

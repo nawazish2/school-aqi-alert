@@ -40,6 +40,12 @@
   .controls { display:flex; gap:8px; flex-wrap:wrap; }
   .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#1c2230; color:#fff; padding:10px 16px; border-radius:10px; max-width:90vw; display:none; z-index:9999; }
   .alert { padding:10px 0; border-bottom:1px solid var(--line); } .alert:last-child { border:0; }
+  .chip { display:inline-block; border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; margin-left:6px; }
+  .chip.acted { background:#d9f2e0; color:#1d6b35; } .chip.pending { background:#fff0c2; color:#7a5b00; }
+  .chip.escalated { background:#fbd9d9; color:#9b1c1c; } .chip.clear { background:var(--bg); color:var(--muted); }
+  .preview a { color:var(--accent); word-break:break-all; }
+  .acct { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; text-align:center; }
+  .acct div { border-radius:10px; padding:8px; } .acct b { display:block; font-size:22px; }
   .sim { background:#fff3cd; color:#7a5b00; border-radius:6px; padding:0 6px; font-size:11px; margin-left:6px; }
 </style>
 </head>
@@ -76,7 +82,8 @@
           <input id="fLat" placeholder="Latitude (click map)" inputmode="decimal">
           <input id="fLon" placeholder="Longitude (click map)" inputmode="decimal">
           <input id="fPhone" placeholder="Principal phone +91…">
-          <select id="fLang">
+          <input id="fContacts" placeholder="Extra contacts (comma separated)">
+          <select id="fLang" class="full">
             <option value="en">SMS in English</option>
             <option value="hi">SMS in Hindi</option>
             <option value="both">English + Hindi</option>
@@ -87,6 +94,16 @@
     </div>
 
     <div style="display:grid; gap:16px; align-content:start">
+      <section class="card">
+        <h2>Today's accountability <span class="muted">(alert → confirm → escalate)</span></h2>
+        <div class="acct">
+          <div class="chip acted" style="margin:0"><b id="aActed">0</b>Acted</div>
+          <div class="chip pending" style="margin:0"><b id="aPending">0</b>Awaiting</div>
+          <div class="chip escalated" style="margin:0"><b id="aEsc">0</b>Escalated</div>
+        </div>
+        <div class="muted" style="margin-bottom:8px">Each alert has a confirm link. At 7:30 AM schools that have not confirmed are reported to the district officer.</div>
+        <button id="escalate" class="primary">Run 7:30 escalation now</button>
+      </section>
       <section class="card">
         <h2>Schools <span class="muted">(AQI = worse of now and today's 7am–4pm peak)</span></h2>
         <div id="schools"></div>
@@ -114,6 +131,7 @@
 const COLORS = [[50,"#2e9e4f"],[100,"#c9a400"],[150,"#e67e22"],[200,"#d63a3a"],[300,"#8e44ad"],[1e6,"#7b1e3a"]];
 const color = a => (COLORS.find(([m]) => a <= m) || COLORS.at(-1))[1];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const linkify = t => esc(t).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">confirm link</a>');
 const $ = id => document.getElementById(id);
 const THRESHOLD = 151;
 
@@ -144,6 +162,9 @@ async function call(path, method = "GET", body) {
   return j;
 }
 
+const LABELS = {acted:"Acted", pending:"Awaiting confirmation", escalated:"Escalated"};
+const chip = st => LABELS[st] ? `<span class="chip ${st}">${LABELS[st]}</span>` : "";
+
 function spark(values, peak) {
   if (!values || values.length < 2) return "";
   const w = 240, h = 36, max = Math.max(...values, 50), step = w / (values.length - 1);
@@ -160,20 +181,22 @@ async function load() {
 
   const checked = schools.filter(s => s.last_aqi != null);
   $("sMonitored").textContent = schools.length;
+  const count = st => schools.filter(s => s.status === st).length;
   $("sRisk").textContent = checked.filter(s => s.last_aqi >= THRESHOLD).length;
+  $("aActed").textContent = count("acted"); $("aPending").textContent = count("pending"); $("aEsc").textContent = count("escalated");
   $("sWorst").textContent = checked.length ? Math.max(...checked.map(s => s.last_aqi)) : "–";
   $("sAlerts").textContent = alerts.length;
 
   $("schools").innerHTML = schools.length ? schools.map(s => `
     <div class="school">
       <div class="top">
-        <div><div class="name">${esc(s.name)}</div>
+        <div><div class="name">${esc(s.name)}${chip(s.status)}</div>
           <div class="muted">${esc(s.last_category || "Not checked yet")}${s.last_current != null ? ` · now ${s.last_current}, peak ${s.last_peak}` : ""}</div></div>
         <div><span class="badge" style="background:${s.last_aqi == null ? "#98a2b3" : color(s.last_aqi)}">${s.last_aqi ?? "–"}</span>
           <button class="x" title="Remove" data-del="${esc(s.school_id)}">✕</button></div>
       </div>
       ${spark(s.last_hourly)}
-      ${s.last_message ? `<div class="preview">${esc(s.last_message)}</div>` : ""}
+      ${s.last_message ? `<div class="preview">${linkify(s.last_message)}</div>` : ""}
     </div>`).join("") : '<div class="muted">No schools yet. Add one.</div>';
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
     if (!confirm("Remove this school?")) return;
@@ -195,7 +218,7 @@ async function load() {
   $("alerts").innerHTML = alerts.length ? alerts.map(a => `
     <div class="alert">
       <div><b>${esc(a.school)}</b> · AQI ${a.aqi}${a.simulated ? '<span class="sim">simulated</span>' : ""}</div>
-      <div class="preview">${esc(a.message)}</div>
+      <div class="preview">${linkify(a.message)}</div>
       <div class="muted">${new Date(a.ts).toLocaleString()} · SMS ${esc(a.sms)}</div>
     </div>`).join("") : '<div class="muted">No alerts yet.</div>';
 }
@@ -208,13 +231,18 @@ function busy(btn, label, fn) {
   };
 }
 $("refresh").onclick = busy($("refresh"), "Checking…", async () => { await call("api/refresh", "POST"); await load(); toast("Checked all schools"); });
+$("escalate").onclick = busy($("escalate"), "Escalating…", async () => {
+  const j = await call("api/escalate", "POST");
+  toast(j.escalated ? `Escalated ${j.escalated} school(s) to the district officer` : "Nothing to escalate: every alert is confirmed");
+  await load();
+});
 $("simulate").onclick = busy($("simulate"), "Sending…", async () => {
   const j = await call("api/simulate", "POST", {school_id: $("simSchool").value, aqi: Number($("simAqi").value)});
   toast(`SMS ${j.sms}: ${j.message}`); await load();
 });
 $("add").onclick = busy($("add"), "Adding…", async () => {
-  await call("api/schools", "POST", {name: $("fName").value, lat: $("fLat").value, lon: $("fLon").value, phone: $("fPhone").value, lang: $("fLang").value});
-  ["fName","fLat","fLon","fPhone"].forEach(id => $(id).value = "");
+  await call("api/schools", "POST", {name: $("fName").value, lat: $("fLat").value, lon: $("fLon").value, phone: $("fPhone").value, contacts: $("fContacts").value, lang: $("fLang").value});
+  ["fName","fLat","fLon","fPhone","fContacts"].forEach(id => $(id).value = "");
   if (picker) { picker.remove(); picker = null; }
   await load(); toast("School added");
 });

@@ -1,6 +1,7 @@
 """HTTP API + dashboard (single Lambda behind an HTTP API)."""
 import json
 import os
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import core
@@ -31,7 +32,12 @@ def handler(event, context):
             return _resp(200, f.read(), "text/html; charset=utf-8")
 
     if route == "GET /api/schools":
-        return _resp(200, schools_table.scan()["Items"])
+        today = datetime.now(timezone.utc).date().isoformat()
+        items = schools_table.scan()["Items"]
+        return _resp(200, [{**s, "status": logic.status(s, today)} for s in items])
+
+    if route == "POST /api/escalate":
+        return _resp(200, core.escalate())
 
     if route == "POST /api/schools":
         try:

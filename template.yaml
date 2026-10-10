@@ -7,6 +7,10 @@ Parameters:
     Type: Number
     Default: 151
     Description: US AQI at or above which an SMS is sent
+  OfficerPhone:
+    Type: String
+    Default: ""
+    Description: District officer phone (+91...) that receives escalations
   AdminKey:
     Type: String
     Default: ""
@@ -56,6 +60,9 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: check_aqi.handler
+      Environment:
+        Variables:
+          CONFIRM_BASE_URL: !GetAtt ConfirmFunctionUrl.FunctionUrl
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref SchoolsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref AlertsTable }
@@ -69,10 +76,42 @@ Resources:
             Schedule: cron(0 1 * * ? *) # 06:30 IST every day
             Description: Daily 6:30 AM IST AQI check
 
+  ConfirmFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: confirm.handler
+      FunctionUrlConfig:
+        AuthType: NONE
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SchoolsTable }
+
+  EscalateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: escalate.handler
+      Environment:
+        Variables:
+          OFFICER_PHONE: !Ref OfficerPhone
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SchoolsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref AlertsTable }
+        - Statement:
+            - { Effect: Allow, Action: sns:Publish, Resource: "*" }
+      Events:
+        Deadline:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 2 * * ? *) # 07:30 IST: schools that have not confirmed are escalated
+            Description: Escalate unconfirmed alerts
+
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: api.handler
+      Environment:
+        Variables:
+          CONFIRM_BASE_URL: !GetAtt ConfirmFunctionUrl.FunctionUrl
+          OFFICER_PHONE: !Ref OfficerPhone
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref SchoolsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref AlertsTable }
@@ -85,6 +124,7 @@ Resources:
         AddSchool: { Type: HttpApi, Properties: { Path: /api/schools, Method: POST } }
         DeleteSchool: { Type: HttpApi, Properties: { Path: /api/schools/{school_id}, Method: DELETE } }
         Alerts: { Type: HttpApi, Properties: { Path: /api/alerts, Method: GET } }
+        Escalate: { Type: HttpApi, Properties: { Path: /api/escalate, Method: POST } }
         Refresh: { Type: HttpApi, Properties: { Path: /api/refresh, Method: POST } }
         Simulate: { Type: HttpApi, Properties: { Path: /api/simulate, Method: POST } }
 
